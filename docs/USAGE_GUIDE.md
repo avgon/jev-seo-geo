@@ -177,10 +177,12 @@ Bu özellik, aynı soruyu seçtiğiniz AI modellerine sorar ve marka adı yanıt
 from jev_seo_geo import probe
 
 report = probe.brand(
-    brand="Vercel",
+    brand="ÖrnekMarka",
     queries=[
-        "Next.js uygulaması için hızlı ve güvenilir deploy platformu hangisi?",
-        "Frontend projelerini yayınlamak için Heroku yerine ne kullanılabilir?",
+        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
+        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
+        "ÖrnekMarka ön muhasebe programı kimler için uygun?",
+        "ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?",
     ],
     models=["openai", "anthropic", "google"],
 )
@@ -190,6 +192,16 @@ print(report.avg_rank)
 for result in report.results:
     print(result.model, result.mentioned, result.rank, result.context)
 ```
+
+### Doğru GEO sorgu seti nasıl hazırlanır?
+
+Tek bir “en iyi ürün hangisi?” sorusu yeterli değildir. Her marka için gerçek müşteri dilinde bu beş niyeti kapsayın:
+
+1. **Keşif:** “Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?”
+2. **Kıyaslama:** “Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?”
+3. **Probleme çözüm:** “E-ticaret siparişlerimi ve faturalarımı tek yerden nasıl takip edebilirim?”
+4. **Alternatif:** “ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?”
+5. **Marka algısı:** “ÖrnekMarka kimler için uygun, güçlü ve zayıf yönleri neler?”
 
 Önemli sınırlar:
 - AI yanıtları zamana, bölgeye, modele ve prompt'a göre değişir.
@@ -203,12 +215,13 @@ for result in report.results:
 from jev_seo_geo import gap
 
 report = gap.analyze(
-    brand_name="Pipedrive",
-    competitors=["HubSpot", "Salesforce"],
+    brand_name="ÖrnekMarka",
+    competitors=["RakipMarka A", "RakipMarka B"],
     queries=[
-        "Satış ekibi için kullanımı en kolay CRM programı hangisi?",
-        "Küçük bir ekip CRM programını en hızlı nasıl kurabilir?",
-        "API entegrasyonu güçlü CRM programları hangileri?",
+        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
+        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
+        "E-ticaret yapan küçük işletmeler için hangi ön muhasebe programı daha uygun?",
+        "ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?",
     ],
 )
 

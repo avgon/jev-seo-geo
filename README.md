@@ -24,20 +24,21 @@ pip install jev-seo-geo
 from jev_seo_geo import probe
 
 results = probe.brand(
-    brand="Vercel",
+    brand="ÖrnekMarka",
     queries=[
-        "Next.js uygulaması için hızlı ve güvenilir deploy platformu hangisi?",
-        "Frontend projelerini yayınlamak için Heroku yerine ne kullanılabilir?",
-        "Sunucusuz uygulama yayınlama platformlarını nasıl karşılaştırabilirim?",
+        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
+        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
+        "ÖrnekMarka ön muhasebe programı kimler için uygun, güçlü ve zayıf yönleri neler?",
+        "ÖrnekMarka yerine değerlendirilebilecek ön muhasebe programları hangileri?",
     ],
     models=["openai", "anthropic", "google"],
 )
 
 for r in results:
     print(f"{r.model} | {r.query[:40]} | mentioned={r.mentioned} | rank={r.rank}")
-# openai    | Next.js uygulaması için hızlı... | mentioned=True  | rank=1
-# anthropic | Next.js uygulaması için hızlı... | mentioned=True  | rank=2
-# google    | Next.js uygulaması için hızlı... | mentioned=True  | rank=1
+# openai    | Küçük işletmeler için kullanımı... | mentioned=True  | rank=1
+# anthropic | Küçük işletmeler için kullanımı... | mentioned=True  | rank=2
+# google    | Küçük işletmeler için kullanımı... | mentioned=True  | rank=1
 ```
 
 ### 2. Content Score — "Sayfam yapay zekâ yanıtları için uygun mu?"
@@ -87,21 +88,22 @@ for t in ranked:
 from jev_seo_geo import gap
 
 report = gap.analyze(
-    brand="Pipedrive",
-    competitors=["HubSpot", "Salesforce"],
+    brand="ÖrnekMarka",
+    competitors=["RakipMarka A", "RakipMarka B"],
     queries=[
-        "Satış ekibi için kullanımı en kolay CRM programı hangisi?",
-        "Küçük bir ekip CRM programını en hızlı nasıl kurabilir?",
-        "API entegrasyonu güçlü CRM programları hangileri?",
+        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
+        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
+        "E-ticaret yapan küçük işletmeler için hangi ön muhasebe programı daha uygun?",
+        "ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?",
     ],
 )
 print(report.summary)
-# "HubSpot mentioned in 3/3 queries across all models.
-#  Pipedrive mentioned in 1/3. Gap: authority signals, comparison content."
+# "RakipMarka A tüm modellerde 4/4 sorguda anıldı.
+#  ÖrnekMarka 1/4 sorguda anıldı. Açık: otorite sinyalleri ve karşılaştırma içeriği."
 print(report.recommendations)
-# ["Create comparison pages: Pipedrive vs HubSpot",
-#  "Add API documentation with examples",
-#  "Publish customer case studies with metrics"]
+# ["ÖrnekMarka ve RakipMarka A karşılaştırma sayfası oluştur",
+#  "Ürünün hangi işletme tiplerine uygun olduğunu açıklayan rehber yayınla",
+#  "Ölçülebilir sonuçlar içeren müşteri vaka çalışmaları ekle"]
 ```
 
 ### 5. Optimize — Find gaps, get a practical fix plan, optionally rewrite
