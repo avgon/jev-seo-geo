@@ -181,6 +181,13 @@ Only `TYPESAFE_API_KEY` is required for Jev scoring. Probe features and automati
 | `audit` | Full GEO visibility report | LLM + Jev |
 | `optimize` | Diagnoses gaps, creates a fix plan, optionally rewrites and re-scores | Jev, optional LLM |
 
+## Help
+
+- [Usage guide](docs/USAGE_GUIDE.md)
+- [FAQ: how it works, keys, scoring, and safe rewrites](docs/FAQ.md)
+
+Open an issue with a minimal reproducible example for bugs or integration questions. Do not include API keys, customer data, or private prompts.
+
 ## License
 
 MIT
