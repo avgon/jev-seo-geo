@@ -104,7 +104,28 @@ print(report.recommendations)
 #  "Publish customer case studies with metrics"]
 ```
 
-### 5. GEO Audit — Full visibility report
+### 5. Optimize — Find gaps, get a practical fix plan, optionally rewrite
+
+```python
+from jev_seo_geo import optimize
+
+# Jev-only, no generative-model key needed
+plan = optimize.checklist("CRM is important for business. Pick the best one.")
+for item in plan:
+    print(item["priority"], item["action"])
+
+# With OpenAI / Anthropic / Gemini key: diagnose, rewrite, then re-score
+result = optimize.rewrite(
+    text="CRM is important for business. Pick the best one.",
+    topic="CRM software for startups",
+    focus="all",  # eeat, structure, citation, freshness, or all
+)
+print(result.before.overall)
+print(result.improvement)
+print(result.rewritten)
+```
+
+### 6. GEO Audit — Full visibility report
 
 ```python
 from jev_seo_geo import audit
@@ -138,18 +159,16 @@ LLM APIs handle: brand probing (asking AI models questions)
 
 ## Configuration
 
-```python
-from jev_seo_geo import Config
+Set environment variables before using the toolkit:
 
-config = Config(
-    jev_api_key="your_typesafe_key",     # or TYPESAFE_API_KEY env
-    openai_api_key="your_openai_key",     # for probing GPT
-    anthropic_api_key="your_claude_key",  # for probing Claude
-    google_api_key="your_gemini_key",     # for probing Gemini
-)
+```bash
+export TYPESAFE_API_KEY="your_typesafe_key"
+export OPENAI_API_KEY="your_openai_key"       # optional, for GPT probing/rewrite
+export ANTHROPIC_API_KEY="your_claude_key"    # optional, for Claude probing/rewrite
+export GOOGLE_API_KEY="your_gemini_key"       # optional, for Gemini probing/rewrite
 ```
 
-Only `jev_api_key` is required. Probe features need at least one LLM key.
+Only `TYPESAFE_API_KEY` is required for Jev scoring. Probe features and automatic rewrite need at least one LLM key.
 
 ## Modules
 
@@ -160,6 +179,7 @@ Only `jev_api_key` is required. Probe features need at least one LLM key.
 | `arena` | Rank titles/headlines | Jev only |
 | `gap` | Compare brand vs competitors | LLM + Jev |
 | `audit` | Full GEO visibility report | LLM + Jev |
+| `optimize` | Diagnoses gaps, creates a fix plan, optionally rewrites and re-scores | Jev, optional LLM |
 
 ## License
 
