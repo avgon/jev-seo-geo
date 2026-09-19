@@ -18,7 +18,7 @@ pip install jev-seo-geo
 
 ## Quick Start
 
-### 1. Brand Probe — "Do AI models know about me?"
+### 1. Brand Probe — "Yapay zekâ modelleri markamı öneriyor mu?"
 
 ```python
 from jev_seo_geo import probe
@@ -26,28 +26,28 @@ from jev_seo_geo import probe
 results = probe.brand(
     brand="Vercel",
     queries=[
-        "best platform for deploying Next.js apps",
-        "alternatives to Heroku for frontend hosting",
-        "serverless deployment platforms comparison",
+        "Next.js uygulaması için hızlı ve güvenilir deploy platformu hangisi?",
+        "Frontend projelerini yayınlamak için Heroku yerine ne kullanılabilir?",
+        "Sunucusuz uygulama yayınlama platformlarını nasıl karşılaştırabilirim?",
     ],
     models=["openai", "anthropic", "google"],
 )
 
 for r in results:
     print(f"{r.model} | {r.query[:40]} | mentioned={r.mentioned} | rank={r.rank}")
-# openai    | best platform for deploying Next.js... | mentioned=True  | rank=1
-# anthropic | best platform for deploying Next.js... | mentioned=True  | rank=2
-# google    | best platform for deploying Next.js... | mentioned=True  | rank=1
+# openai    | Next.js uygulaması için hızlı... | mentioned=True  | rank=1
+# anthropic | Next.js uygulaması için hızlı... | mentioned=True  | rank=2
+# google    | Next.js uygulaması için hızlı... | mentioned=True  | rank=1
 ```
 
-### 2. Content Score — "Is my page AI-friendly?"
+### 2. Content Score — "Sayfam yapay zekâ yanıtları için uygun mu?"
 
 ```python
 from jev_seo_geo import score
 
 result = score.content(
-    text="Your page content or article text here...",
-    url="https://yoursite.com/blog/post",  # optional, for structure check
+    text="Sayfa veya blog yazısı metninizi buraya ekleyin...",
+    url="https://siteniz.com/blog/yazi",  # isteğe bağlı
 )
 print(result)
 # ContentScore(
@@ -60,28 +60,28 @@ print(result)
 # )
 ```
 
-### 3. Title Arena — "Which headline wins?"
+### 3. Title Arena — "Hangi başlık daha güçlü?"
 
 ```python
 from jev_seo_geo import arena
 
 ranked = arena.titles(
     titles=[
-        "10 Best CRM Tools for Small Business in 2026",
-        "CRM Comparison: HubSpot vs Salesforce vs Pipedrive",
-        "How to Choose a CRM: Complete Buyer's Guide",
-        "We Tested 10 CRMs For 6 Months. Here's What We Found.",
+        "2026'da Küçük İşletmeler İçin En İyi 10 CRM Programı",
+        "HubSpot, Salesforce ve Pipedrive Karşılaştırması",
+        "Şirketiniz İçin CRM Programı Nasıl Seçilir?",
+        "10 CRM Programını 6 Ay Test Ettik: Sonuçlar",
     ],
-    intent="someone researching CRM options for their startup",
+    intent="Yeni kurduğu şirket için CRM programı araştıran karar verici",
 )
 for t in ranked:
     print(f"#{t.rank} (score={t.score:.2f}) {t.title}")
-# #1 (score=0.89) We Tested 10 CRMs For 6 Months. Here's What We Found.
-# #2 (score=0.76) CRM Comparison: HubSpot vs Salesforce vs Pipedrive
+# #1 (score=0.89) 10 CRM Programını 6 Ay Test Ettik: Sonuçlar
+# #2 (score=0.76) HubSpot, Salesforce ve Pipedrive Karşılaştırması
 # ...
 ```
 
-### 4. Competitor Gap — "Why does AI recommend them over me?"
+### 4. Competitor Gap — "Yapay zekâ neden rakibimi benden daha çok öneriyor?"
 
 ```python
 from jev_seo_geo import gap
@@ -90,9 +90,9 @@ report = gap.analyze(
     brand="Pipedrive",
     competitors=["HubSpot", "Salesforce"],
     queries=[
-        "best CRM for sales teams",
-        "easiest CRM to set up",
-        "CRM with best API",
+        "Satış ekibi için kullanımı en kolay CRM programı hangisi?",
+        "Küçük bir ekip CRM programını en hızlı nasıl kurabilir?",
+        "API entegrasyonu güçlü CRM programları hangileri?",
     ],
 )
 print(report.summary)
@@ -110,14 +110,14 @@ print(report.recommendations)
 from jev_seo_geo import optimize
 
 # Jev-only, no generative-model key needed
-plan = optimize.checklist("CRM is important for business. Pick the best one.")
+plan = optimize.checklist("CRM programları müşteri ilişkilerini yönetmeye yardımcı olur. Ekibiniz için uygun olanı seçin.")
 for item in plan:
     print(item["priority"], item["action"])
 
 # With OpenAI / Anthropic / Gemini key: diagnose, rewrite, then re-score
 result = optimize.rewrite(
-    text="CRM is important for business. Pick the best one.",
-    topic="CRM software for startups",
+    text="CRM programları müşteri ilişkilerini yönetmeye yardımcı olur. Ekibiniz için uygun olanı seçin.",
+    topic="Yeni kurulan şirketler için CRM programı",
     focus="all",  # eeat, structure, citation, freshness, or all
 )
 print(result.before.overall)

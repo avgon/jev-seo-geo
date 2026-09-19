@@ -155,10 +155,10 @@ from jev_seo_geo import arena
 
 results = arena.titles(
     [
-        "10 Best CRM Tools for Small Business in 2026",
-        "CRM Comparison: HubSpot vs Salesforce vs Pipedrive",
-        "How to Choose a CRM: Complete Buyer's Guide",
-        "We Tested 10 CRMs For 6 Months. Here's What We Found.",
+        "2026'da Küçük İşletmeler İçin En İyi 10 CRM Programı",
+        "HubSpot, Salesforce ve Pipedrive Karşılaştırması",
+        "Şirketiniz İçin CRM Programı Nasıl Seçilir?",
+        "10 CRM Programını 6 Ay Test Ettik: Sonuçlar",
     ],
     intent="startup için CRM araştıran karar verici",
 )
@@ -179,8 +179,8 @@ from jev_seo_geo import probe
 report = probe.brand(
     brand="Vercel",
     queries=[
-        "best platform for deploying Next.js apps",
-        "alternatives to Heroku for frontend hosting",
+        "Next.js uygulaması için hızlı ve güvenilir deploy platformu hangisi?",
+        "Frontend projelerini yayınlamak için Heroku yerine ne kullanılabilir?",
     ],
     models=["openai", "anthropic", "google"],
 )
@@ -206,9 +206,9 @@ report = gap.analyze(
     brand_name="Pipedrive",
     competitors=["HubSpot", "Salesforce"],
     queries=[
-        "best CRM for sales teams",
-        "easiest CRM to set up",
-        "CRM with best API",
+        "Satış ekibi için kullanımı en kolay CRM programı hangisi?",
+        "Küçük bir ekip CRM programını en hızlı nasıl kurabilir?",
+        "API entegrasyonu güçlü CRM programları hangileri?",
     ],
 )
 
