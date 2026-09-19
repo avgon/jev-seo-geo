@@ -120,6 +120,23 @@ print("Fark:", result.improvement)
 print(result.rewritten)
 ```
 
+### Kendi LLM'inizi bağlama
+
+Yerleşik sağlayıcılar yerine kendi fonksiyonunuzu, yerel modelinizi veya OpenClaw gibi bir katmanı bağlayabilirsiniz:
+
+```python
+from jev_seo_geo import optimize
+
+def my_generator(prompt: str) -> str:
+    # Kendi LLM çağrınız burada. Prompt'u modele gönderip çıktıyı döndürün.
+    return my_llm(prompt)
+
+result = optimize.rewrite(
+    text="Mevcut içerik...",
+    generator=my_generator,
+)
+```
+
 `focus` seçenekleri:
 - `all`: tüm boşlukları ele alır.
 - `eeat`: yazar deneyimi, uzmanlık ve güven sinyalleri.

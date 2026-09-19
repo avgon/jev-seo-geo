@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from jev_seo_geo.client import JevClient, LLMProber
 from jev_seo_geo.score import content as score_content, ContentScore
@@ -27,6 +27,7 @@ def rewrite(
     topic: str = "",
     jev: JevClient | None = None,
     prober: LLMProber | None = None,
+    generator: Callable[[str], str] | None = None,
 ) -> OptimizeResult:
     """Diagnose content weaknesses and optionally rewrite.
 
@@ -39,6 +40,8 @@ def rewrite(
         focus: Which aspect to prioritize.
         url: Optional URL for context.
         topic: Optional target keyword/topic.
+        generator: Optional callable that receives the rewrite prompt and returns text.
+            Use this to connect any custom or local LLM without a built-in provider.
     """
     j = jev or JevClient()
     p = prober or LLMProber()
@@ -54,16 +57,19 @@ def rewrite(
     after = None
     improvement = 0.0
 
-    if p.available_models:
-        provider = p.available_models[0]
-        prompt = _build_rewrite_prompt(text, checklist, focus, topic)
-        try:
-            rewritten = p.query(prompt, provider, timeout=60)
+    prompt = _build_rewrite_prompt(text, checklist, focus, topic)
+    try:
+        if generator:
+            rewritten = generator(prompt)
+        elif p.available_models:
+            rewritten = p.query(prompt, p.available_models[0], timeout=60)
+
+        if rewritten:
             # Re-score the rewritten version
             after = score_content(rewritten, url=url, topic=topic, client=j)
             improvement = round(after.overall - before.overall, 2)
-        except Exception:
-            pass  # Fall back to checklist-only
+    except Exception:
+        pass  # Fall back to checklist-only
 
     return OptimizeResult(
         before=before,
