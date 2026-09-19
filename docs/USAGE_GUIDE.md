@@ -1,251 +1,84 @@
 # jev-seo-geo Kullanım Kılavuzu
 
-`jev-seo-geo`, bir sitenin veya içeriğin AI aramalarındaki görünürlüğünü ölçmek ve iyileştirmek için tasarlanmış açık kaynak araç kitidir.
+Bu kütüphane API yanıtlarında marka adının geçmesini gözlemler, verilen metne sezgisel puan verir ve insan incelemesi gerektiren taslaklar üretir. Google sıralaması veya tüketici ChatGPT sıralaması ölçmez. Perplexity entegrasyonu, canlı web tarama, sayfa indirme ve crawler yoktur. URL yalnızca bağlamdır.
 
-- **SEO:** Google gibi klasik arama motorlarındaki görünürlük.
-- **GEO:** ChatGPT, Claude, Gemini ve Perplexity gibi üretken AI yanıtlarında görünürlük.
+## Kurulum
 
-Araç iki parçadan oluşur:
+PyPI yayını doğrulanmadığından kaynak depoyu kullanın:
 
-1. **Jev karar motoru:** İçerik kalitesi, başlık seçimi ve eksiklerin hızlı analizi.
-2. **İsteğe bağlı LLM probe/yeniden-yazım:** Bir markanın AI yanıtlarında geçip geçmediğini ölçme ve içeriği önerilere göre iyileştirme.
-
-## 1. Kurulum
-
-```bash
-pip install jev-seo-geo
+```sh
+pip install "git+https://github.com/avgon/jev-seo-geo.git"
 ```
 
-Kaynak koddan denemek için:
+Python 3.9+ hedeflenir; bu çalışmada yalnızca 3.13 üzerinde test yapıldı. Yerel test: `python -m unittest discover -s tests -v`. Ağ çağrısı yapmayan eksiksiz örnekler README içinde bulunur.
 
-```bash
-git clone https://github.com/avgon/jev-seo-geo.git
-cd jev-seo-geo
-pip install -e .
-```
+## Kimlik bilgileri ve ücret
 
-## 2. Anahtarlar
+Puanlama, checklist ve başlık arena için Jev anahtarı gerekir. Marka probe ve gap için yalnızca üretken model anahtarı gerekir, Jev gerekmez. Otomatik rewrite için Jev ile birlikte üretken sağlayıcı veya callback gerekir. Checklist, üretken model anahtarı olmadan çalışır ama Jev anahtarı olmadan çalışmaz.
 
-Her özellik için sadece `TYPESAFE_API_KEY` gerekir:
+`JevClient(api_key=..., model=...)` ve `LLMProber(keys={...}, models={...})` ile açık yapılandırma tercih edin. Yerleşik sağlayıcı adları `openai`, `anthropic`, `google` değerleridir. Bilinmeyen adlar reddedilir. Model kimliklerini sağlayıcınızın desteklediği değerlerle belirleyin. Varsayılan modelin hâlâ kullanılabilir olduğu garanti edilmez.
 
-```bash
-export TYPESAFE_API_KEY="apikey_..."
-```
+Argüman verilmezse ilgili ortam değişkenleri okunabilir: `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`. `LLMProber(keys={})` ortamdan anahtar aramayı kapatır. Testler gerçek anahtar kullanmaz. Gerçek çağrılar ücretli olabilir ve metninizi harici sağlayıcıya gönderir. Gizli veya müşteri verisini izinsiz göndermeyin, anahtarları rapora/depoya koymayın.
 
-Marka probe ve otomatik rewrite için en az bir üretken model anahtarı ekleyin:
+## Marka ve rakip karşılaştırması
 
-```bash
-export OPENAI_API_KEY="sk-..."
-# veya
-export ANTHROPIC_API_KEY="sk-ant-..."
-# veya
-export GOOGLE_API_KEY="AIza..."
-```
-
-Anahtar yoksa `optimize.checklist()` yine çalışır. Sadece AI modellerine soru sorma ve otomatik yeniden-yazım kapalı kalır.
-
-## 3. İçerik Kalitesi Skoru
-
-Bir blog yazısını veya landing page metnini E-E-A-T, alıntılanabilirlik, yapı ve güncellik açısından ölçün.
+Aşağıdaki örnek tamamen yereldir:
 
 ```python
-from jev_seo_geo import score
+from jev_seo_geo import probe, gap
 
-article = """
-2026 CRM Karşılaştırması
+class YerelOrnek:
+    available_models = ["yerel"]
+    models = {"yerel": "ornek-v1"}
+    def query(self, prompt, provider, timeout=30):
+        return "1. ÖrnekMarka\n2. RakipMarka"
 
-Bu çalışmada 12 CRM platformunu altı ay boyunca beş kişilik satış ekibiyle test ettik.
-...
-"""
+p = YerelOrnek()
+report = probe.brand(brand="ÖrnekMarka", queries=["Küçük ekip için hangi araçlar var?"], prober=p)
+for item in report.results:
+    print(item.status, item.mentioned, item.rank, item.timestamp)
+print(report.mention_rate, report.success_count, report.error_count)
 
-result = score.content(article, topic="startup CRM")
-
-print(result.eeat)           # deneyim, uzmanlık, otorite, güven
-print(result.citation_ready) # AI yanıtında kaynak gösterilme potansiyeli
-print(result.structure)      # başlık, tablo, liste gibi yapı sinyalleri
-print(result.freshness)      # güncel olma sinyalleri
-print(result.overall)        # 0.0-1.0 toplam skor
-print(result.suggestions)    # tespit edilen boşluklar
-```
-
-### Skorları yorumlama
-
-| Skor | Anlamı | Öncelik |
-|---:|---|---|
-| 0.00-0.39 | Zayıf, AI kaynak olarak seçmeyebilir | Yeniden yapılandır |
-| 0.40-0.64 | Temel yeterlilik, net eksikler var | Hedefli iyileştir |
-| 0.65-0.79 | İyi temel, rakip analizi ile geliştir | Optimize et |
-| 0.80-1.00 | Güçlü sinyaller | Güncel tut ve probe et |
-
-Bu skorlar yönlendirme içindir, Google veya herhangi bir AI sağlayıcısının resmi sıralaması değildir.
-
-## 4. Önce Checklist, Sonra Rewrite
-
-En güvenli akış önce Jev ile boşlukları tespit etmek, sonra editoryal kontrolle düzeltmektir.
-
-```python
-from jev_seo_geo import optimize
-
-plan = optimize.checklist(
-    "CRM iş için önemlidir. En iyisini seçin.",
-    topic="startup CRM",
+comparison = gap.analyze(
+    brand_name="ÖrnekMarka", competitors=["RakipMarka"],
+    queries=["Küçük ekip için hangi araçlar var?"], prober=p, samples=2,
 )
-
-for item in plan:
-    print(f"[{item['priority']}] {item['issue']}")
-    print(f"Yapılacak: {item['action']}")
-    print(f"Örnek: {item['example']}")
+print(comparison.summary)
 ```
 
-Tipik çıktılar:
-- Yazar biyografisi ve uzmanlık ekle.
-- İddiaları veri, metodoloji ve kaynak ile destekle.
-- H2/H3 başlıkları, karşılaştırma tablosu ve SSS ekle.
-- Eski tarihleri ve istatistikleri güncelle.
+Her benzersiz soru/sağlayıcı/örnek bir kez üretilir; tüm markalar aynı yanıtta değerlendirilir. Marka adını soruya eklemek ölçümü yanlılaştırabilir. Tarafsız ve sabit soru seti kullanın.
 
-### Otomatik yeniden-yazım
+Hata, markanın yokluğu değildir. Başarısız gözlemde `mentioned=None`, `rank=None` olur; oran yalnızca başarılı yanıtlardan hesaplanır. Hiç başarılı yanıt yoksa `mention_rate=None` olur. `complete`, `partial`, `failed` durumlarını ve hata sayılarını inceleyin. `rank` yalnızca marka numaralı listenin başında açıkça bulunduğunda gerçek liste numarasıdır; genel anılma öneri veya tavsiye kanıtı değildir. Unicode sözcük sınırı kullanılır, bitişik CJK metinlerde sözcük ayrıştırma ve takma ad çözümleme yapılmaz.
 
-Bir LLM anahtarı tanımlıysa `rewrite()` aynı akışta teşhis eder, metni iyileştirir ve yeniden skorlar.
+## Metin, başlık ve checklist
+
+Gerçek Jev istemcisiyle kullanacağınız çağrılar:
 
 ```python
-result = optimize.rewrite(
-    text="CRM iş için önemlidir. En iyisini seçin.",
-    topic="startup CRM",
-    focus="all",
-)
-
-print("Önce:", result.before.overall)
-print("Sonra:", result.after.overall if result.after else "LLM anahtarı yok")
-print("Fark:", result.improvement)
-print(result.rewritten)
+# j: yapılandırılmış JevClient veya açık yerel test nesnesi
+# from jev_seo_geo import score, arena, optimize
+# result = score.content("Mevcut metin", topic="ekip araçları", client=j)
+# ranked = arena.titles(["Araç seçim rehberi", "Ekip araçları nasıl karşılaştırılır?"], client=j)
+# tasks = optimize.checklist("Mevcut metin", focus="citation", jev=j)
 ```
 
-### Kendi LLM'inizi bağlama
+`focus`: `all`, `eeat`, `citation`, `structure`, `freshness`. Geçersiz değer reddedilir. Jev puanları resmî Google E-E-A-T puanı, doğruluk kontrolü veya SEO başarı tahmini değildir. Ham yapı puanı 0..2 ölçeğindedir ve daima ikiye bölünür. Eksik veya bozuk Jev alanları sessizce sıfır yapılmaz, hata verir. Eşit başlık puanları aynı sırayı alır.
 
-Yerleşik sağlayıcılar yerine kendi fonksiyonunuzu, yerel modelinizi veya OpenClaw gibi bir katmanı bağlayabilirsiniz:
+## Rewrite ve rapor
 
-```python
-from jev_seo_geo import optimize
+`optimize.rewrite(text, jev=j, prober=p)` otomatik sağlayıcı kullanabilir; `generator=fonksiyon` ile prompt alan ve boş olmayan metin döndüren kendi üreticinizi bağlayabilirsiniz. Callback varsa sağlayıcı yerine o kullanılır.
 
-def my_generator(prompt: str) -> str:
-    # Kendi LLM çağrınız burada. Prompt'u modele gönderip çıktıyı döndürün.
-    return my_llm(prompt)
+- `no_provider`: üretken sağlayıcı yok; checklist vardır.
+- `generated`: taslak üretildi ve tekrar puanlandı, doğrulanmış değildir.
+- `generation_failed`: üretim başarısız veya sonuç geçersiz.
+- `scoring_failed`: taslak korundu ancak son puan alınamadı.
 
-result = optimize.rewrite(
-    text="Mevcut içerik...",
-    generator=my_generator,
-)
-```
+Başlangıç puanlaması başarısızsa çağrı hata verir. `error` yalnızca güvenli hata kategorisidir. `improvement`, sezgisel puan farkıdır; SEO artışı değildir. `human_review_required` ve `unverified_draft` her zaman açıktır. `unresolved_placeholders` içindeki `[VERIFY: ...]` alanlarını çözün. Hiç alan olmaması doğrulama yapıldığı anlamına gelmez. İstatistik, kaynak, tarih, uzmanlık ve müşteri iddialarını insan editör doğrulamalıdır.
 
-`focus` seçenekleri:
-- `all`: tüm boşlukları ele alır.
-- `eeat`: yazar deneyimi, uzmanlık ve güven sinyalleri.
-- `citation`: veri, kaynak, metodoloji ve kaynak gösterilme potansiyeli.
-- `structure`: başlıklar, listeler, tablolar, SSS.
-- `freshness`: tarih, terim ve güncel bilgi.
+`audit.run(brand, domain, category, competitors, content=..., jev=j, prober=p)` birleşik rapor üretir. `report.save("audit.html")` yerel HTML yazar. Durum ve `errors` alanına bakın; başarısız API çağrıları başarılı denetim sayılmaz. Atlanan bölümler ölçülmüş sayılmaz.
 
-> Otomatik rewrite taslaktır. Uydurulmuş sayı, kaynak veya uzmanlık iddiası yayınlamayın. Metni yayın öncesi insan editoryal doğrulamasından geçirin.
+## Kapsam sınırları
 
-## 5. Başlık Arena
+Metin, başlık, soru ve yakalanan sağlayıcı yanıtı için 12.000 karakter sınırı vardır. Fazlası açıkça reddedilir; sessiz kesme, parça metni yeniden yazma ve chunking yoktur. Üretilen taslak sınırı aşarsa korunur ancak `scoring_failed` olur. Sağlayıcı çıktı limitleri yanıtı erken bitirebilir; tamlık garanti edilmez. Site genelini analiz etmez.
 
-Başlık varyasyonlarını hedef niyete göre sıralayın.
-
-```python
-from jev_seo_geo import arena
-
-results = arena.titles(
-    [
-        "2026'da Küçük İşletmeler İçin En İyi 10 CRM Programı",
-        "HubSpot, Salesforce ve Pipedrive Karşılaştırması",
-        "Şirketiniz İçin CRM Programı Nasıl Seçilir?",
-        "10 CRM Programını 6 Ay Test Ettik: Sonuçlar",
-    ],
-    intent="startup için CRM araştıran karar verici",
-)
-
-for item in results:
-    print(item.rank, item.score, item.strengths, item.title)
-```
-
-Arena; özgüllük, tıklama değeri, alıntılanabilirlik ve otorite sinyallerini kıyaslar. Bu bir sıralama garantisi değil, alternatifler arasında karar destek aracıdır.
-
-## 6. AI Marka Görünürlüğü Probe
-
-Bu özellik, aynı soruyu seçtiğiniz AI modellerine sorar ve marka adı yanıtın içinde geçiyor mu kontrol eder.
-
-```python
-from jev_seo_geo import probe
-
-report = probe.brand(
-    brand="ÖrnekMarka",
-    queries=[
-        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
-        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
-        "ÖrnekMarka ön muhasebe programı kimler için uygun?",
-        "ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?",
-    ],
-    models=["openai", "anthropic", "google"],
-)
-
-print(report.mention_rate)
-print(report.avg_rank)
-for result in report.results:
-    print(result.model, result.mentioned, result.rank, result.context)
-```
-
-### Doğru GEO sorgu seti nasıl hazırlanır?
-
-Tek bir “en iyi ürün hangisi?” sorusu yeterli değildir. Her marka için gerçek müşteri dilinde bu beş niyeti kapsayın:
-
-1. **Keşif:** “Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?”
-2. **Kıyaslama:** “Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?”
-3. **Probleme çözüm:** “E-ticaret siparişlerimi ve faturalarımı tek yerden nasıl takip edebilirim?”
-4. **Alternatif:** “ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?”
-5. **Marka algısı:** “ÖrnekMarka kimler için uygun, güçlü ve zayıf yönleri neler?”
-
-Önemli sınırlar:
-- AI yanıtları zamana, bölgeye, modele ve prompt'a göre değişir.
-- Probe, gözlemdir. Marka görünürlüğünü garanti etmez.
-- Prompt setini sektörünüzün gerçek müşteri sorularından üretin.
-- Aynı sorguları düzenli aralıklarla tekrar ederek trend oluşturun.
-
-## 7. Rakip Gap Analizi
-
-```python
-from jev_seo_geo import gap
-
-report = gap.analyze(
-    brand_name="ÖrnekMarka",
-    competitors=["RakipMarka A", "RakipMarka B"],
-    queries=[
-        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
-        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
-        "E-ticaret yapan küçük işletmeler için hangi ön muhasebe programı daha uygun?",
-        "ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?",
-    ],
-)
-
-print(report.summary)
-for recommendation in report.recommendations:
-    print("-", recommendation)
-```
-
-Bu rapor, hangi markanın seçilen prompt setinde daha çok anıldığını gösterir. Ardından içerik gap'lerini ele almak için `score.content()` ve `optimize.checklist()` kullanın.
-
-## 8. Önerilen İş Akışı
-
-1. Hedef müşteri sorularından 20-50 query oluşturun.
-2. `probe.brand()` ile mevcut görünürlüğü ölçün.
-3. En az anıldığınız konuları belirleyin.
-4. O konulardaki sayfaları `score.content()` ile ölçün.
-5. `optimize.checklist()` ile editoryal görev listesi çıkarın.
-6. İnsan denetimiyle güncelleyin, kaynakları doğrulayın.
-7. Başlık alternatiflerini `arena.titles()` ile test edin.
-8. 2-4 hafta sonra aynı probe setiyle tekrar ölçün.
-
-## 9. Güvenli ve Dürüst Kullanım
-
-- Sahte referans, istatistik, müşteri hikayesi veya uzmanlık iddiası üretmeyin.
-- Otomatik rewrite çıktısını doğrudan yayınlamayın.
-- Sağlık, hukuk, finans gibi yüksek riskli alanlarda alan uzmanı incelemesi kullanın.
-- Skorları kesin sıralama veya model garantisi gibi sunmayın.
+Karşılaştırma yalnızca örneklenen yanıtlardaki farkı gösterir. Rakibin neden daha çok anıldığını nedensel olarak açıklamaz. Bu çalışmada gerçek sağlayıcı başarısı veya SEO artışı doğrulanmadı.

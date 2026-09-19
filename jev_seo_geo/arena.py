@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from jev_seo_geo.client import JevClient
+from jev_seo_geo.validation import validate_text, validate_answers
 
 
 @dataclass
@@ -32,6 +33,8 @@ def titles(
         titles: List of title variations to compare.
         intent: What the searcher is trying to do.
     """
+    for title in titles:
+        validate_text(title, "title")
     c = client or JevClient()
     results: list[TitleRank] = []
 
@@ -40,9 +43,7 @@ def titles(
         if intent:
             state += f"\nSearcher intent: {intent}"
 
-        answers = c.ask(
-            state=state,
-            questions={
+        questions = {
                 "specificity": {
                     "type": "noul",
                     "instructions": "Is this title specific and concrete (with numbers, names, comparisons) rather than generic?",
@@ -71,16 +72,12 @@ def titles(
                         "generic": "Nothing particularly strong about this title",
                     },
                 },
-            },
-        )
+            }
+        answers = c.ask(state=state, questions=questions)
+        values = validate_answers(answers, questions)
 
         def _val(key: str) -> float:
-            ans = answers.get(key, {})
-            if isinstance(ans, (int, float)):
-                return float(ans)
-            if isinstance(ans, dict):
-                return float(ans.get("noul", ans.get("probability", 0)))
-            return 0.0
+            return values[key]
 
         score = round(
             _val("specificity") * 0.25
@@ -90,8 +87,7 @@ def titles(
             2,
         )
 
-        strengths = answers.get("strengths", {})
-        strength_str = strengths.get("choice", "generic") if isinstance(strengths, dict) else "generic"
+        strength_str = values["strengths"]
 
         results.append(TitleRank(
             title=title,
@@ -104,6 +100,6 @@ def titles(
     # Sort and assign ranks
     results.sort(key=lambda x: x.score, reverse=True)
     for i, r in enumerate(results):
-        r.rank = i + 1
+        r.rank = results[i - 1].rank if i and results[i - 1].score == r.score else i + 1
 
     return results

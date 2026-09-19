@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from jev_seo_geo.client import JevClient
+from jev_seo_geo.validation import validate_text, validate_answers
 
 
 @dataclass
@@ -34,17 +35,16 @@ def content(
         url: Optional URL (for context).
         topic: Optional topic/keyword focus.
     """
+    validate_text(text)
     c = client or JevClient()
 
-    state = f"Content to evaluate:\n{text[:3000]}"
+    state = f"Content to evaluate:\n{text}"
     if url:
         state += f"\nURL: {url}"
     if topic:
         state += f"\nTarget topic: {topic}"
 
-    answers = c.ask(
-        state=state,
-        questions={
+    questions = {
             "expertise": {
                 "type": "noul",
                 "instructions": "Does this content demonstrate genuine expertise and first-hand experience on the topic?",
@@ -86,16 +86,12 @@ def content(
                 "type": "noul",
                 "instructions": "Would adding specific numbers, statistics, or comparison data improve this content significantly?",
             },
-        },
-    )
+        }
+    answers = c.ask(state=state, questions=questions)
+    values = validate_answers(answers, questions)
 
     def _val(key: str) -> float:
-        ans = answers.get(key, {})
-        if isinstance(ans, (int, float)):
-            return round(float(ans), 2)
-        if isinstance(ans, dict):
-            return round(float(ans.get("noul", ans.get("probability", ans.get("score", 0)))), 2)
-        return 0.0
+        return values[key]
 
     expertise = _val("expertise")
     authority = _val("authority")
@@ -106,7 +102,7 @@ def content(
     freshness = _val("freshness")
 
     structure_raw = _val("structure")
-    structure = round(structure_raw / 2, 2) if structure_raw > 1 else structure_raw
+    structure = round(structure_raw / 2, 2)
 
     overall = round(eeat * 0.35 + citation * 0.30 + structure * 0.20 + freshness * 0.15, 2)
 

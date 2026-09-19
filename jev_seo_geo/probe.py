@@ -1,143 +1,114 @@
-"""Brand probe — ask AI models if they know about your brand."""
-
+"""Sample API responses and measure literal mentions, not endorsements."""
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Any
-
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Literal
 from jev_seo_geo.client import LLMProber, JevClient
+from jev_seo_geo.validation import validate_text, safe_error
 
 
 @dataclass
 class ProbeResult:
-    """Single probe result."""
     model: str
     query: str
     response: str
-    mentioned: bool
-    rank: int  # 0 = not mentioned, 1 = first, 2 = second, etc.
-    context: str  # snippet where brand appears
+    mentioned: bool | None
+    rank: int | None
+    context: str
+    status: Literal["success", "error"] = "success"
+    error: str | None = None
+    timestamp: str = ""
+    model_id: str = ""
+    sample: int = 1
+    method: str = "unicode_literal_boundary_v1; explicit_numbered_item_only"
 
 
 @dataclass
 class BrandReport:
-    """Aggregated brand visibility across models and queries."""
     brand: str
     results: list[ProbeResult]
-    mention_rate: float  # 0.0-1.0, how often brand appears
-    avg_rank: float  # average rank when mentioned
-    best_query: str  # query with highest mention rate
-    worst_query: str  # query with lowest mention rate
+    mention_rate: float | None
+    avg_rank: float | None
+    best_query: str
+    worst_query: str
+    success_count: int = 0
+    error_count: int = 0
+    status: str = "failed"
+    error_counts: dict[str, int] = field(default_factory=dict)
 
 
-def brand(
-    brand: str,
-    queries: list[str],
-    *,
-    models: list[str] | None = None,
-    prober: LLMProber | None = None,
-    jev: JevClient | None = None,
-) -> BrandReport:
-    """Probe AI models for brand visibility.
-
-    Args:
-        brand: Brand name to search for.
-        queries: Questions to ask AI models.
-        models: Which providers to query (default: all available).
-        prober: Custom LLMProber instance.
-        jev: Custom JevClient for rank extraction.
-    """
-    p = prober or LLMProber()
-    j = jev or JevClient()
-    target_models = models or p.available_models
-
-    if not target_models:
-        raise ValueError("No LLM API keys configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY.")
-
-    results: list[ProbeResult] = []
-    query_mention_counts: dict[str, int] = {}
-
-    for query in queries:
-        prompt = f"List and briefly describe the top options for: {query}. Be specific with names."
-        query_mentions = 0
-
-        for model in target_models:
-            try:
-                response = p.query(prompt, model)
-            except Exception as e:
-                response = f"[ERROR: {e}]"
-
-            mentioned, rank, context = _detect_brand(brand, response, j)
-            if mentioned:
-                query_mentions += 1
-
-            results.append(ProbeResult(
-                model=model,
-                query=query,
-                response=response,
-                mentioned=mentioned,
-                rank=rank,
-                context=context,
-            ))
-
-        query_mention_counts[query] = query_mentions
-
-    # Aggregate
-    mentioned_results = [r for r in results if r.mentioned]
-    mention_rate = len(mentioned_results) / len(results) if results else 0
-    avg_rank = sum(r.rank for r in mentioned_results) / len(mentioned_results) if mentioned_results else 0
-
-    best_query = max(query_mention_counts, key=query_mention_counts.get) if query_mention_counts else ""
-    worst_query = min(query_mention_counts, key=query_mention_counts.get) if query_mention_counts else ""
-
-    return BrandReport(
-        brand=brand,
-        results=results,
-        mention_rate=round(mention_rate, 2),
-        avg_rank=round(avg_rank, 1),
-        best_query=best_query,
-        worst_query=worst_query,
-    )
-
-
-def _detect_brand(brand: str, text: str, jev: JevClient) -> tuple[bool, int, str]:
-    """Detect brand mention and rank in AI response."""
-    if not text or text.startswith("[ERROR"):
-        return False, 0, ""
-
-    # Simple regex detection first
-    pattern = re.compile(re.escape(brand), re.IGNORECASE)
+def _detect_brand(brand: str, text: str, jev: JevClient | None = None):
+    validate_text(brand, "brand")
+    pattern = re.compile(r"(?<!\w)" + re.escape(brand.strip()) + r"(?!\w)", re.IGNORECASE)
     match = pattern.search(text)
-
     if not match:
-        return False, 0, ""
+        return False, None, ""
+    rank = None
+    for line in text.splitlines():
+        # Only a brand at the start of a numbered item's label is ordinal evidence.
+        item = re.match(r"^\s*(\d+)[.)]\s+(?:\*\*)?", line)
+        if item and int(item[1]) > 0 and pattern.match(line, item.end()):
+            rank = int(item[1])
+            break
+    return True, rank, text[max(0, match.start()-80):match.end()+80].strip()
 
-    # Extract context around mention
-    start = max(0, match.start() - 80)
-    end = min(len(text), match.end() + 80)
-    context = text[start:end].strip()
 
-    # Use Jev to determine rank position
-    answers = jev.ask(
-        state=f"AI response listing products/services:\n{text[:1500]}\n\nBrand to find: {brand}",
-        questions={
-            "rank": {
-                "type": "score",
-                "instructions": f"At what position is '{brand}' mentioned in this list?",
-                "criteria": [
-                    "Not mentioned or mentioned last/as afterthought",
-                    "Mentioned in middle of the list (3rd-5th position)",
-                    "Mentioned near the top (1st or 2nd position)",
-                ],
-            },
-        },
-    )
+def capture(queries, *, models=None, prober=None, samples=1):
+    p = prober or LLMProber()
+    target_models = p.available_models if models is None else models
+    if not target_models:
+        raise ValueError("No LLM providers configured")
+    if isinstance(samples, bool) or not isinstance(samples, int) or samples < 1:
+        raise ValueError("samples must be a positive integer")
+    if not queries:
+        raise ValueError("At least one query is required")
+    if any(model not in p.available_models for model in target_models):
+        raise ValueError("Unknown or unconfigured provider")
+    for query in queries:
+        validate_text(query, "query")
+    observations = []
+    for query in dict.fromkeys(queries):
+        for model in dict.fromkeys(target_models):
+            for sample in range(1, samples + 1):
+                result = ProbeResult(model, query, "", None, None, "", timestamp=datetime.now(timezone.utc).isoformat(), model_id=getattr(p, "models", {}).get(model, model), sample=sample)
+                try:
+                    result.response = validate_text(p.query(f"List and briefly describe the top options for: {query}. Be specific with names.", model), "provider response")
+                except Exception as error:
+                    result.status = "error"
+                    result.error = safe_error(error)
+                observations.append(result)
+    return observations
 
-    raw_rank = answers.get("rank", {})
-    rank_score = raw_rank.get("score", 0) if isinstance(raw_rank, dict) else 0
-    # Convert: 2=top(rank 1), 1=middle(rank 3), 0=bottom(rank 5+)
-    rank_map = {2: 1, 1: 3, 0: 5}
-    rank = rank_map.get(round(float(rank_score)) if isinstance(rank_score, (int, float)) else 0, 5)
 
-    return True, rank, context
+def evaluate(brand_name, observations):
+    from dataclasses import replace
+    validate_text(brand_name, "brand")
+    results = []
+    for observation in observations:
+        result = replace(observation)
+        if result.status == "success":
+            result.mentioned, result.rank, result.context = _detect_brand(brand_name, result.response)
+        results.append(result)
+    successful = [r for r in results if r.status == "success"]
+    ranks = [r.rank for r in successful if r.rank is not None]
+    rates = {}
+    for query in dict.fromkeys(r.query for r in successful):
+        subset = [r for r in successful if r.query == query]
+        rates[query] = sum(r.mentioned for r in subset) / len(subset)
+    errors = {}
+    for r in results:
+        if r.error:
+            errors[r.error] = errors.get(r.error, 0) + 1
+    n = len(successful)
+    return BrandReport(brand_name, results, sum(r.mentioned for r in successful)/n if n else None,
+                       sum(ranks)/len(ranks) if ranks else None,
+                       max(rates, key=rates.get) if rates else "", min(rates, key=rates.get) if rates else "",
+                       n, len(results)-n, "complete" if n == len(results) and n else "partial" if n else "failed", errors)
+
+
+def brand(brand: str, queries: list[str], *, models=None, prober=None, jev=None, samples=1) -> BrandReport:
+    """Jev argument retained for compatibility; mention/rank detection needs no judge."""
+    validate_text(brand, "brand")
+    return evaluate(brand, capture(queries, models=models, prober=prober, samples=samples))

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable
+import re
+from jev_seo_geo.validation import validate_text, safe_error
 
 from jev_seo_geo.client import JevClient, LLMProber
 from jev_seo_geo.score import content as score_content, ContentScore
@@ -16,7 +18,12 @@ class OptimizeResult:
     after: ContentScore | None  # None if no LLM key
     checklist: list[dict[str, str]]  # [{priority, issue, action, example}]
     rewritten: str  # "" if no LLM key
-    improvement: float  # overall delta (0 if no rewrite)
+    improvement: float  # heuristic score delta, not measured SEO improvement
+    status: str = "no_provider"
+    error: str | None = None
+    unverified_draft: bool = True
+    human_review_required: bool = True
+    unresolved_placeholders: list[str] = field(default_factory=list)
 
 
 def rewrite(
@@ -43,6 +50,8 @@ def rewrite(
         generator: Optional callable that receives the rewrite prompt and returns text.
             Use this to connect any custom or local LLM without a built-in provider.
     """
+    _validate_focus(focus)
+    validate_text(text)
     j = jev or JevClient()
     p = prober or LLMProber()
 
@@ -57,27 +66,26 @@ def rewrite(
     after = None
     improvement = 0.0
 
-    prompt = _build_rewrite_prompt(text, checklist, focus, topic)
-    try:
-        if generator:
-            rewritten = generator(prompt)
-        elif p.available_models:
-            rewritten = p.query(prompt, p.available_models[0], timeout=60)
-
-        if rewritten:
-            # Re-score the rewritten version
-            after = score_content(rewritten, url=url, topic=topic, client=j)
-            improvement = round(after.overall - before.overall, 2)
-    except Exception:
-        pass  # Fall back to checklist-only
-
-    return OptimizeResult(
-        before=before,
-        after=after,
-        checklist=checklist,
-        rewritten=rewritten,
-        improvement=improvement,
-    )
+    status = "no_provider"
+    error = None
+    if generator is not None or p.available_models:
+        prompt = _build_rewrite_prompt(text, checklist, focus, topic)
+        try:
+            draft = generator(prompt) if generator is not None else p.query(prompt, p.available_models[0], timeout=60)
+            if not isinstance(draft, str) or not draft.strip():
+                raise ValueError("Generator must return nonempty text")
+            rewritten = draft
+            status = "generated"
+        except Exception as exc:
+            status, error = "generation_failed", safe_error(exc)
+        if status == "generated":
+            try:
+                after = score_content(rewritten, url=url, topic=topic, client=j)
+                improvement = round(after.overall - before.overall, 2)
+            except Exception as exc:
+                status, error = "scoring_failed", safe_error(exc)
+    return OptimizeResult(before, after, checklist, rewritten, improvement, status, error,
+                          unresolved_placeholders=re.findall(r"\[VERIFY:[^\]]*\]", rewritten, re.IGNORECASE))
 
 
 def checklist(
@@ -89,6 +97,8 @@ def checklist(
     jev: JevClient | None = None,
 ) -> list[dict[str, str]]:
     """Quick checklist without rewrite (Jev only, no LLM needed)."""
+    _validate_focus(focus)
+    validate_text(text)
     j = jev or JevClient()
     scores = score_content(text, url=url, topic=topic, client=j)
     return _build_checklist(scores, focus)
@@ -96,6 +106,7 @@ def checklist(
 
 def _build_checklist(scores: ContentScore, focus: str) -> list[dict[str, str]]:
     """Convert scores + suggestions into prioritized actionable checklist."""
+    _validate_focus(focus)
     items: list[dict[str, str]] = []
 
     # E-E-A-T issues
@@ -111,9 +122,9 @@ def _build_checklist(scores: ContentScore, focus: str) -> list[dict[str, str]]:
     if focus in ("all", "citation") and scores.citation_ready < 0.5:
         items.append({
             "priority": "HIGH",
-            "issue": "AI models unlikely to cite this content",
+            "issue": "Low heuristic citation-readiness score",
             "action": "Add specific data points, statistics, methodology, and source references",
-            "example": 'Change "many users prefer X" to "73% of users preferred X (Source: 2026 Survey, n=1,200)"',
+            "example": 'Use "[VERIFY: measured result, sample size, methodology and source]"',
         })
 
     # Structure
@@ -131,7 +142,7 @@ def _build_checklist(scores: ContentScore, focus: str) -> list[dict[str, str]]:
             "priority": "MEDIUM",
             "issue": "Content appears outdated",
             "action": "Add current year references, update statistics, remove dated language",
-            "example": 'Add "Updated September 2026" and replace old stats with current data',
+            "example": 'Add "[VERIFY: actual review date]" only after reviewing the content',
         })
 
     # From Jev suggestions. Avoid duplicating the specific checks above.
@@ -148,7 +159,19 @@ def _build_checklist(scores: ContentScore, focus: str) -> list[dict[str, str]]:
     }
     for suggestion in scores.suggestions:
         lowered = suggestion.lower()
-        if any(token in lowered and area == focus or token in lowered and focus == "all" for token, area in covered.items()):
+        area = next((area for token, area in covered.items() if token in lowered), None)
+        if focus != "all" and area != focus:
+            continue
+        # Deduplicate only against actions actually emitted, not hypothetical checks.
+        if any(suggestion.casefold() == item["action"].casefold() for item in items):
+            continue
+        if area == "eeat" and any("Low E-E-A-T" in item["issue"] for item in items):
+            continue
+        if area == "citation" and any("citation-readiness" in item["issue"] for item in items):
+            continue
+        if area == "structure" and any("Poor content structure" in item["issue"] for item in items):
+            continue
+        if area == "freshness" and any("outdated" in item["issue"] for item in items):
             continue
         items.append({
             "priority": "MEDIUM",
@@ -158,10 +181,10 @@ def _build_checklist(scores: ContentScore, focus: str) -> list[dict[str, str]]:
         })
 
     # Add quick wins if overall is low
-    if scores.overall < 0.4:
+    if focus == "all" and scores.overall < 0.4:
         items.append({
             "priority": "HIGH",
-            "issue": "Overall AI visibility very low",
+            "issue": "Low overall heuristic content score",
             "action": "Consider a complete rewrite with: expert author, data tables, FAQ, sources, and clear structure",
             "example": "Use the rewrite() function with an LLM key for automated optimization",
         })
@@ -171,6 +194,8 @@ def _build_checklist(scores: ContentScore, focus: str) -> list[dict[str, str]]:
 
 def _build_rewrite_prompt(text: str, checks: list[dict[str, str]], focus: str, topic: str) -> str:
     """Build LLM prompt for content rewrite."""
+    validate_text(text)
+    _validate_focus(focus)
     issues = "\n".join(f"- [{c['priority']}] {c['action']}" for c in checks)
 
     prompt = f"""Rewrite the following content to maximize AI visibility and citation potential.
@@ -193,8 +218,13 @@ RULES:
 - Do NOT add meta-commentary about the rewrite
 
 ORIGINAL CONTENT:
-{text[:4000]}
+{text}
 
 REWRITTEN CONTENT:"""
 
     return prompt
+
+
+def _validate_focus(focus):
+    if focus not in ("all", "eeat", "citation", "structure", "freshness"):
+        raise ValueError("Unknown focus; use all, eeat, citation, structure or freshness")

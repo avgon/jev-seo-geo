@@ -49,7 +49,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_title_arena(self):
         results = arena.titles(["Title A", "Title B"], intent="compare", client=self.jev)
-        self.assertEqual([r.rank for r in results], [1, 2])
+        self.assertEqual([r.rank for r in results], [1, 1])
         self.assertGreater(results[0].score, 0.7)
 
     def test_checklist_and_callback_rewrite(self):
@@ -67,7 +67,7 @@ class WorkflowTests(unittest.TestCase):
     def test_brand_probe_and_gap(self):
         report = probe.brand("ExampleBrand", ["best tools"], prober=self.prober, jev=self.jev)
         self.assertEqual(report.mention_rate, 1.0)
-        self.assertEqual(report.results[0].rank, 1)
+        self.assertIsNone(report.results[0].rank)
         result = gap.analyze("ExampleBrand", ["OtherBrand"], ["best tools"], prober=self.prober, jev=self.jev)
         self.assertIn("ExampleBrand", result.mention_comparison)
         self.assertIn("OtherBrand", result.mention_comparison)

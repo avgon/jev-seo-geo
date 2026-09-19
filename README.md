@@ -1,195 +1,95 @@
 # jev-seo-geo
 
-AI visibility toolkit. Measure and optimize how AI models see your brand.
+A small Python library for sampled API brand mentions, heuristic content scoring and human-reviewed rewrite drafts. It is not a crawler, search engine or ranking measurement service.
 
-> Traditional SEO tools measure Google rankings. This measures **ChatGPT, Perplexity, Claude, and Gemini rankings.**
+## Install from source
 
-## The Problem
+PyPI availability is not verified. Install the reviewed Git revision or a local checkout:
 
-Someone asks ChatGPT *"best project management tool for startups"* and your product doesn't appear. You have no idea why. Ahrefs can't help you. Semrush can't help you. Google Search Console is irrelevant.
-
-**GEO (Generative Engine Optimization)** is the new SEO. But there's no open-source tooling.
-
-## Install
-
-```bash
-pip install jev-seo-geo
+```sh
+pip install "git+https://github.com/avgon/jev-seo-geo.git"
+# Or, from this checkout:
+pip install .
 ```
 
-## Quick Start
+Python 3.9+ syntax/API compatibility is intended. This hardening was executed on Python 3.13; 3.9 through 3.12 and 3.14 have not been runtime-tested here. No runtime third-party dependencies. Run offline tests with `python -m unittest discover -s tests -v`.
 
-### 1. Brand Probe — "Yapay zekâ modelleri markamı öneriyor mu?"
+## Runnable offline examples
+
+These examples use explicit test doubles, never API keys or network access. The dummy scores illustrate the API, not empirical findings.
 
 ```python
-from jev_seo_geo import probe
+from jev_seo_geo import probe, gap, score, arena, optimize, audit
+from jev_seo_geo.client import LLMProber
 
-results = probe.brand(
-    brand="ÖrnekMarka",
-    queries=[
-        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
-        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
-        "ÖrnekMarka ön muhasebe programı kimler için uygun, güçlü ve zayıf yönleri neler?",
-        "ÖrnekMarka yerine değerlendirilebilecek ön muhasebe programları hangileri?",
-    ],
-    models=["openai", "anthropic", "google"],
+class OfflineProber:
+    available_models = ["offline"]
+    models = {"offline": "fixture-v1"}
+    def query(self, prompt, provider, timeout=30):
+        return "1. ExampleBrand\n2. OtherBrand"
+
+class OfflineJev:
+    def ask(self, state, questions, timeout=30):
+        answers = {}
+        for name, question in questions.items():
+            kind = question["type"]
+            value = (next(iter(question["criteria"])) if kind == "choice"
+                     else 1 if kind == "score"
+                     else 0 if name.startswith("missing_") else 0.7)
+            answers[name] = {"type": kind, kind: value}
+        return answers
+
+p, j = OfflineProber(), OfflineJev()
+report = probe.brand("ExampleBrand", ["best tools for a small team"], prober=p)
+for result in report.results:
+    print(result.status, result.model_id, result.mentioned, result.rank)
+print(report.mention_rate, report.success_count, report.error_count)
+
+comparison = gap.analyze(
+    brand_name="ExampleBrand", competitors=["OtherBrand"],
+    queries=["best tools for a small team"], prober=p, samples=2,
 )
+print(comparison.summary)
 
-for r in results:
-    print(f"{r.model} | {r.query[:40]} | mentioned={r.mentioned} | rank={r.rank}")
-# openai    | Küçük işletmeler için kullanımı... | mentioned=True  | rank=1
-# anthropic | Küçük işletmeler için kullanımı... | mentioned=True  | rank=2
-# google    | Küçük işletmeler için kullanımı... | mentioned=True  | rank=1
-```
-
-### 2. Content Score — "Sayfam yapay zekâ yanıtları için uygun mu?"
-
-```python
-from jev_seo_geo import score
-
-result = score.content(
-    text="Sayfa veya blog yazısı metninizi buraya ekleyin...",
-    url="https://siteniz.com/blog/yazi",  # isteğe bağlı
+text = "Our product supports task lists. [VERIFY: independent source]"
+print(score.content(text, client=j).structure)
+print(arena.titles(["Task list guide", "How to compare task tools"], client=j))
+print(optimize.checklist(text, focus="citation", jev=j))
+draft = optimize.rewrite(
+    text, jev=j, prober=LLMProber(keys={}),
+    generator=lambda prompt: "## Task lists\n[VERIFY: source for product claims]",
 )
-print(result)
-# ContentScore(
-#   eeat=0.72,           # Experience, Expertise, Authority, Trust
-#   citation_ready=0.85, # Would AI cite this as a source?
-#   structure=0.60,      # Headers, lists, data tables, schema
-#   freshness=0.90,      # Up-to-date signals
-#   overall=0.77,
-#   suggestions=["Add author bio with credentials", "Include data sources"]
-# )
+print(draft.status, draft.improvement, draft.unresolved_placeholders)
+report = audit.run("ExampleBrand", "example.com", "task tools", ["OtherBrand"],
+                   content=text, queries=["task tools"], jev=j, prober=p)
+html = report.to_html()  # report.save("audit.html") writes this HTML locally
 ```
 
-### 3. Title Arena — "Hangi başlık daha güçlü?"
+## Real providers, credentials and costs
 
-```python
-from jev_seo_geo import arena
+Real calls are opt-in by calling library functions with configured credentials. Construct `JevClient(api_key=..., model=...)` for scoring. Construct `LLMProber(keys={"openai": ...}, models={"openai": "your-supported-model-id"})` for generation. Built-in provider identifiers are exactly `openai`, `anthropic`, `google`. Unknown providers are rejected; custom compatible prober objects or rewrite callbacks are supported.
 
-ranked = arena.titles(
-    titles=[
-        "2026'da Küçük İşletmeler İçin En İyi 10 CRM Programı",
-        "HubSpot, Salesforce ve Pipedrive Karşılaştırması",
-        "Şirketiniz İçin CRM Programı Nasıl Seçilir?",
-        "10 CRM Programını 6 Ay Test Ettik: Sonuçlar",
-    ],
-    intent="Yeni kurduğu şirket için CRM programı araştıran karar verici",
-)
-for t in ranked:
-    print(f"#{t.rank} (score={t.score:.2f}) {t.title}")
-# #1 (score=0.89) 10 CRM Programını 6 Ay Test Ettik: Sonuçlar
-# #2 (score=0.76) HubSpot, Salesforce ve Pipedrive Karşılaştırması
-# ...
-```
+With no explicit credentials, constructors can read `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GOOGLE_API_KEY`. **Passing `LLMProber(keys={})` explicitly disables provider environment discovery.** Tests pass explicit fixtures and must never use real keys. Jev scoring requires its own key even in checklist-only mode; brand probes and gap comparisons do not require Jev. A content-only audit needs Jev but no generation provider. No-provider rewrite means no generative provider, not offline scoring.
 
-### 4. Competitor Gap — "Yapay zekâ neden rakibimi benden daha çok öneriyor?"
+Provider/model defaults are convenience IDs, not a guarantee of availability. All generation model IDs are configurable with `models`; Jev accepts `model`. Requests transmit supplied text/prompts/context to the selected external services and may incur charges. Do not send confidential/customer data without permission. Responses and HTML reports can contain sensitive text. Do not commit keys or log request payloads. No live provider success is claimed by offline contract tests. Default request timeout is 30 seconds (automatic rewrite: 60); there are no automatic retries.
 
-```python
-from jev_seo_geo import gap
+## Measurement contract and limits
 
-report = gap.analyze(
-    brand="ÖrnekMarka",
-    competitors=["RakipMarka A", "RakipMarka B"],
-    queries=[
-        "Küçük işletmeler için kullanımı kolay bir ön muhasebe programı önerir misin?",
-        "Ön muhasebe programı seçerken hangi özellikleri karşılaştırmalıyım?",
-        "E-ticaret yapan küçük işletmeler için hangi ön muhasebe programı daha uygun?",
-        "ÖrnekMarka yerine hangi ön muhasebe programları değerlendirilebilir?",
-    ],
-)
-print(report.summary)
-# "RakipMarka A tüm modellerde 4/4 sorguda anıldı.
-#  ÖrnekMarka 1/4 sorguda anıldı. Açık: otorite sinyalleri ve karşılaştırma içeriği."
-print(report.recommendations)
-# ["ÖrnekMarka ve RakipMarka A karşılaştırma sayfası oluştur",
-#  "Ürünün hangi işletme tiplerine uygun olduğunu açıklayan rehber yayınla",
-#  "Ölçülebilir sonuçlar içeren müşteri vaka çalışmaları ekle"]
-```
+* Each unique query/provider/sample is generated once and reused for every brand in `gap.analyze`. `samples` defaults to 1. Duplicate queries/provider identifiers are deduplicated. Costs scale with queries × providers × samples, not number of compared brands.
+* `ProbeResult` records provider, configured model ID (not a verified backend identity), UTC timestamp, sample number and detection method. Raw successful response text is retained. Failures have `status="error"`, sanitized error category, `mentioned=None`, `rank=None` and no exception text.
+* Mention rates use successful observations only. Zero successes gives `mention_rate=None`; unknown is not zero. Reports include success/error counts and `complete`, `partial` or `failed` status. Per-query best/worst use successful rates, with first-seen tie ordering and no significance claim. `avg_rank=None` means no evidenced ordinal.
+* Matching is literal, case-insensitive, Unicode word-boundary aware. It avoids substring matches inside words and supports separated non-Latin names. It does not segment unspaced CJK text, resolve aliases, transliterations or semantic references. Whitespace-only brands are invalid.
+* A mention is **not a recommendation**. Rank is only a positive, explicit numbered-list label where the brand starts the item, not a consumer-product ranking. There is no Jev rank judge or fabricated 1/3/5 mapping. Tied title heuristic scores share a rank; gap summaries do not declare tie winners or causal explanations.
+* These are API responses, **not consumer ChatGPT rankings**. There is **no Perplexity integration**, live browsing, page fetching, crawl, backlink analysis, indexing check or search-console measurement. `url`/`domain` are context only. Generated responses may be stale, incomplete or biased. A brand-bearing query biases mention rates; prefer a stable neutral query set for comparisons.
+* Jev values are **heuristics, not official Google E-E-A-T scoring**, factual verification, calibrated citation probabilities or evidence of SEO gains. Required response fields/types, finite ranges and choices are validated. Raw structure is always 0..2 and divided by 2. Malformed answers raise instead of silently becoming zero.
+* Content, titles, query text and captured provider responses have an explicit **12,000-character maximum**. Empty text is rejected. No input is silently truncated and no partial rewrite is attempted. Oversized content raises `ValueError` before scoring; failed provider responses are excluded. No chunking or entire-site coverage is provided. Upstream generation has provider output limits and may end early; the library does not guarantee completeness.
+* `optimize.rewrite` returns `no_provider`, `generated`, `generation_failed` or `scoring_failed`. Initial scoring errors raise. A valid draft is retained if subsequent scoring fails, including oversized drafts. `improvement` is only the heuristic after-minus-before score (0 when not scored), not measured SEO uplift. All drafts remain explicitly unverified and require human review, even if no `[VERIFY: ...]` placeholder is found. Check `unresolved_placeholders` and verify every fact/source/date/credential before publishing.
+* Audit status is `complete`, `partial`, `failed` or `no_input` for the requested/available work; omitted content/provider sections are not measured. `errors` exposes sanitized stage failures. HTML escapes caller-controlled text.
 
-### 5. Optimize — Find gaps, get a practical fix plan, optionally rewrite
+## Intentional compatibility changes
 
-```python
-from jev_seo_geo import optimize
+Function names and primary argument names remain: `probe.brand(brand=...)`, `gap.analyze(brand_name=...)`, and report iteration via `report.results`. `jev` is accepted but unused for probes. Nullable rates/ranks/mentions replace misleading zeros, title ties share ranks, errors are explicit, and invalid/oversized inputs are rejected. `LLMProber.query_all` now returns typed-status dictionaries per provider instead of embedding error strings as responses. Strict Jev answers require an object with `noul`, `score` or `choice` for every requested key; optional `type` must match. Explicit `keys` no longer falls back to unrelated environment credentials.
 
-# Jev-only, no generative-model key needed
-plan = optimize.checklist("CRM programları müşteri ilişkilerini yönetmeye yardımcı olur. Ekibiniz için uygun olanı seçin.")
-for item in plan:
-    print(item["priority"], item["action"])
+See [Turkish usage guide](docs/USAGE_GUIDE.md), [FAQ](docs/FAQ.md) and [hardening plan](docs/HARDENING_PLAN.md).
 
-# With OpenAI / Anthropic / Gemini key: diagnose, rewrite, then re-score
-result = optimize.rewrite(
-    text="CRM programları müşteri ilişkilerini yönetmeye yardımcı olur. Ekibiniz için uygun olanı seçin.",
-    topic="Yeni kurulan şirketler için CRM programı",
-    focus="all",  # eeat, structure, citation, freshness, or all
-)
-print(result.before.overall)
-print(result.improvement)
-print(result.rewritten)
-```
-
-### 6. GEO Audit — Full visibility report
-
-```python
-from jev_seo_geo import audit
-
-report = audit.run(
-    brand="YourBrand",
-    domain="yourbrand.com",
-    category="project management software",
-    competitors=["Notion", "Asana", "Monday"],
-)
-report.save("geo-audit-2026-09.html")
-```
-
-## How It Works
-
-```
-┌─────────────┐     ┌──────────┐     ┌──────────────┐
-│  AI Models   │────▶│  Probe   │────▶│  Brand       │
-│  (GPT/Claude │     │  Layer   │     │  Mention     │
-│  /Gemini)    │     └──────────┘     │  Detection   │
-└─────────────┘                       └──────┬───────┘
-                                             │
-┌─────────────┐     ┌──────────┐     ┌──────▼───────┐
-│  Your       │────▶│  Jev     │────▶│  Score &     │
-│  Content    │     │  Engine  │     │  Recommend   │
-└─────────────┘     └──────────┘     └──────────────┘
-
-Jev handles: content quality scoring, title ranking, E-E-A-T assessment
-LLM APIs handle: brand probing (asking AI models questions)
-```
-
-## Configuration
-
-Set environment variables before using the toolkit:
-
-```bash
-export TYPESAFE_API_KEY="your_typesafe_key"
-export OPENAI_API_KEY="your_openai_key"       # optional, for GPT probing/rewrite
-export ANTHROPIC_API_KEY="your_claude_key"    # optional, for Claude probing/rewrite
-export GOOGLE_API_KEY="your_gemini_key"       # optional, for Gemini probing/rewrite
-```
-
-Only `TYPESAFE_API_KEY` is required for Jev scoring. Probe features and automatic rewrite need at least one LLM key.
-
-## Modules
-
-| Module | What it does | Needs |
-|---|---|---|
-| `probe` | Ask AI models about your brand | LLM API keys |
-| `score` | Rate content for AI-friendliness | Jev only |
-| `arena` | Rank titles/headlines | Jev only |
-| `gap` | Compare brand vs competitors | LLM + Jev |
-| `audit` | Full GEO visibility report | LLM + Jev |
-| `optimize` | Diagnoses gaps, creates a fix plan, optionally rewrites and re-scores | Jev, optional LLM |
-
-## Help
-
-- [Usage guide](docs/USAGE_GUIDE.md)
-- [FAQ: how it works, keys, scoring, and safe rewrites](docs/FAQ.md)
-
-Open an issue with a minimal reproducible example for bugs or integration questions. Do not include API keys, customer data, or private prompts.
-
-## License
-
-MIT
+License: MIT.

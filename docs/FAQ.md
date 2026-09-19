@@ -1,56 +1,39 @@
 # Frequently Asked Questions
 
-## What does jev-seo-geo do?
+## What is measured?
 
-It helps teams measure and improve visibility in generative AI answers. It combines:
+Literal brand mentions in sampled API responses, and heuristic Jev evaluations of supplied text. Not consumer ChatGPT rankings, official Google E-E-A-T scores, actual citation probabilities or SEO uplift. A mention can be negative and is not an endorsement. An ordinal is reported only when the brand starts an explicitly numbered item. Gap comparisons are descriptive, not causal diagnosis.
 
-- **Jev scoring:** evaluates content structure, E-E-A-T-related signals, freshness and citation readiness.
-- **AI probes:** asks configured AI providers relevant customer questions and records whether a brand is mentioned.
-- **Gap analysis:** compares mention rates against selected competitors.
-- **Optimization:** turns scoring gaps into a checklist and can use an LLM callback or provider to draft a revised version.
+## Does it browse or crawl? Does it support Perplexity?
 
-It is a decision-support toolkit, not a ranking guarantee.
+No. No live browsing, crawl or URL fetching is implemented. `url` and `domain` are context. Built-in generation providers are OpenAI, Anthropic and Google only. Provider model IDs are configurable and their availability is not guaranteed. No Perplexity integration exists.
 
-## Does it replace traditional SEO tools?
+## Which keys are required?
 
-No. Traditional SEO tools measure search rankings, backlinks, keywords and technical crawl issues. `jev-seo-geo` focuses on a different layer: how content and brands appear in AI-generated answers. They can be used together.
+Jev scoring/checklist/title evaluation requires a Jev key. Probes and gap comparisons need a generation provider but no Jev key. Rewrite requires initial Jev scoring and optionally a provider or callback. No-provider rewrite still requires Jev. Constructors may read environment keys if credentials are omitted; explicit `LLMProber(keys={})` disables generation-key discovery. See README for exact names and source installation. Do not assume PyPI availability.
 
-## Which features require API keys?
+## What if the provider fails?
 
-`TYPESAFE_API_KEY` is needed for Jev scoring.
+Error observations are unknown, not absent mentions. Rates use only successful observations; no successes means `None`. Results include sanitized error categories, success counts, timestamps, configured model IDs and method metadata. Audits expose `partial`/`failed` states and stage errors. `query_all` returns per-provider status dictionaries. Tests mock HTTP calls and do not demonstrate live service success.
 
-Brand probing and automatic rewrites need at least one text-generation provider, such as OpenAI, Anthropic, Gemini, or a custom callback. The checklist workflow works with Jev alone.
+## Are comparisons fair?
 
-## How does the custom LLM callback work?
+All compared brands share the same captured response for each query/provider/sample. That removes independent-generation differences, not all bias. Prompts, model updates, sampling variability and literal matching affect results. Use neutral queries and repeat observations. Ties do not establish a winner. Word boundaries handle separated Unicode names but not unspaced-language segmentation, aliases or semantic references.
 
-Pass any function that accepts a prompt and returns a string:
+## How much content is covered?
 
-```python
-from jev_seo_geo import optimize
+The maximum is 12,000 characters per content/title/query/captured response. Oversized text is rejected explicitly, never silently truncated. There is no chunking, whole-site analysis or guarantee that provider-generated text is complete. Initial invalid content raises before scoring. The entire accepted text is sent to the judge/rewrite prompt. URLs are not downloaded.
 
-result = optimize.rewrite(
-    "Your existing content...",
-    generator=lambda prompt: your_llm_call(prompt),
-)
-```
+## Can I publish a rewrite directly?
 
-This lets teams connect self-hosted models, existing gateways, or other providers without changing the package.
+No. Every rewrite is an unverified draft requiring human review. `unresolved_placeholders` exposes `[VERIFY: ...]` fields, but absence of placeholders is not evidence of factual accuracy. Verify facts, sources, statistics, credentials and dates yourself. The library does not verify facts. `improvement` means heuristic score delta only, not an actual SEO gain.
 
-## Are scores official Google or AI-provider rankings?
+Statuses are `no_provider`, `generated`, `generation_failed`, `scoring_failed`. Empty/non-string callback results fail generation. A valid draft remains available if re-scoring fails. Initial scoring failures raise rather than returning an invented baseline.
 
-No. Scores are internal decision-support signals based on the supplied content and Jev evaluation. AI answers also vary by model, prompt, date, location and product updates. Use repeated probes and content changes to track directional progress.
+## What are the privacy and cost boundaries?
 
-## Can I publish the automatic rewrite directly?
+Real calls send supplied content/context to external services and can cost money. Get permission for sensitive data; do not log/commit credentials. Stored raw responses and reports may contain private content. Default timeout is 30 seconds, rewrite generation 60 seconds; no retries. Tests use explicit offline fixtures and mocked urllib, never discovered real credentials. Run README's offline example before configuring real clients.
 
-No. Treat it as a draft. Verify every claim, citation, credential, statistic and testimonial before publishing. The optimizer is designed to retain facts and mark missing evidence for verification, but human review remains necessary.
+## Python compatibility?
 
-## How should I start?
-
-1. Run `score.content()` on an important page.
-2. Use `optimize.checklist()` to create an editorial task list.
-3. Test title alternatives with `arena.titles()`.
-4. Build a stable query set from real customer questions.
-5. Run `probe.brand()` and `gap.analyze()` periodically.
-6. Re-measure after changes.
-
-For full examples, see the [Usage Guide](USAGE_GUIDE.md).
+Python 3.9+ is intended. This hardening was runtime-tested on 3.13 only. Other versions are not claimed as executed. See README and history for actual build/test evidence and intentional API changes.
