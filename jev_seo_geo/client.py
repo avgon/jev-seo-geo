@@ -55,7 +55,7 @@ class LLMProber:
 
     ENDPOINTS = {
         "openai": ("https://api.openai.com/v1/chat/completions", "OPENAI_API_KEY", "gpt-4o-mini"),
-        "anthropic": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "claude-sonnet-4-20250514"),
+        "anthropic": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "claude-sonnet-4-6-20250819"),
         "google": ("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", "GOOGLE_API_KEY", "gemini-2.0-flash"),
     }
 
